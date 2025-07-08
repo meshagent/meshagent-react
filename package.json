@@ -1,0 +1,38 @@
+{
+    "name": "@meshagent/meshagent-react",
+    "version": "0.0.35",
+    "description": "Meshagent React Client",
+    "homepage": "https://www.meshagent.com",
+    "scripts": {
+        "build": "mkdir -p dist && ./scripts/build.sh"
+    },
+    "author": "Meshagent Software",
+    "license": "Apache-2.0",
+    "type": "module",
+    "module": "dist/esm/index.js",
+    "main": "./dist/esm/index.js",
+    "types": "dist/index.d.ts",
+    "exports": {
+        ".": {
+            "module": "./dist/esm/index.js",
+            "default": "./dist/cjs/index.js"
+        },
+        "./package.json": "./package.json"
+    },
+    "files": [
+        "dist",
+        "!dist/**/test",
+        "LICENSE",
+        "README.md",
+        "CHANGELOG.md"
+    ],
+    "devDependencies": {
+        "@types/react": "^19.1.8",
+        "@types/react-dom": "^19.1.6"
+    },
+    "dependencies": {
+        "@meshagent/meshagent": "file:../meshagent-ts",
+        "react-dom": "19.0.0",
+        "typescript": "^5.8.3"
+    }
+}

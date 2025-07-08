@@ -1,0 +1,29 @@
+{
+    "compilerOptions": {
+        "module": "CommonJS",
+        "lib": ["ES2020"],
+        "moduleResolution": "bundler",
+        "declaration": true,
+        "skipLibCheck": true,
+        "allowJs": true,
+        "checkJs": false,
+        "target": "ES2020",
+        "strict": true,
+        "esModuleInterop": true,
+        "jsx": "react-jsx",            
+        "emitDeclarationOnly": false,
+        "baseUrl": "./src",
+        "rootDir": "./src",
+        "typeRoots": [
+            "./types",
+            "./node_modules/@types",
+            "../node_modules/@types"
+        ]
+    },
+    "exclude": [
+        "dist"
+    ],
+    "include": [
+        "src"
+    ]
+}
