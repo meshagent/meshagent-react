@@ -108,16 +108,15 @@ export function useRoomConnection(props: UseRoomConnectionOptions): UseRoomConne
 
         if (cancelled) return;
 
-        // 2️⃣  Build client
         const cli = new RoomClient({
           protocol: new Protocol({
             channel: new WebSocketProtocolChannel({ url, jwt }),
           }),
         });
+
         setClient(cli);
         setState('connecting');
 
-        // 3️⃣  Start
         await cli.start({
           onDone: () => {
             if (cancelled) return;
@@ -130,7 +129,6 @@ export function useRoomConnection(props: UseRoomConnectionOptions): UseRoomConne
           },
         });
 
-        // 4️⃣  Optional messaging
         if (enableMessaging) {
           await cli.messaging.enable();
         }
@@ -138,6 +136,7 @@ export function useRoomConnection(props: UseRoomConnectionOptions): UseRoomConne
         if (cancelled) return;
         setState('ready');
         setReady(true);
+
       } catch (e) {
         if (cancelled) return;
         setError(e);
@@ -158,7 +157,7 @@ export function useRoomConnection(props: UseRoomConnectionOptions): UseRoomConne
   return {
     client,
     state,
-    ready: state === 'ready',
+    ready,
     done: state === 'done',
     error,
     dispose,
