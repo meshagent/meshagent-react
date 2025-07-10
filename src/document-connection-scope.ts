@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { MeshDocument, RoomClient } from '@meshagent/meshagent';
 
+export interface UseDocumentConnectionProps {
+    room: RoomClient;
+    path: string;
+}
+
 export interface UseDocumentConnectionResult {
   document: MeshDocument | null;
 
@@ -18,10 +23,7 @@ export interface UseDocumentConnectionResult {
  * @param room  An already‑connected RoomClient.
  * @param path  Path to the document inside the room.
  */
-export function useDocumentConnection(
-  room: RoomClient,
-  path: string,
-): UseDocumentConnectionResult {
+export function useDocumentConnection({ room, path }: UseDocumentConnectionProps): UseDocumentConnectionResult {
   const [document, setDocument] = useState<MeshDocument | null>(null);
   const [error, setError] = useState<unknown>(null);
 
