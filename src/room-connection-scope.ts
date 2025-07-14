@@ -1,4 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
+import { subscribe, Subscription } from './subscribe-async-gen';
+import { RoomEvent, RoomMessageEvent } from '@meshagent/meshagent';
 
 import {
     ParticipantToken,
@@ -73,6 +75,7 @@ export interface UseRoomConnectionResult {
   error: unknown;
 
   dispose: () => void;
+  inc: number;
 }
 
 export function useRoomConnection(props: UseRoomConnectionOptions): UseRoomConnectionResult {
@@ -85,6 +88,7 @@ export function useRoomConnection(props: UseRoomConnectionOptions): UseRoomConne
   const [ready, setReady] = useState(false);
   const [state, setState] = useState<'authorizing' | 'connecting' | 'ready' | 'done'>('authorizing');
   const [error, setError] = useState<unknown>(null);
+  const [inc, setInc] = useState(0);
 
   // Keep the latest client in a ref so we can call `dispose` in cleanup.
   const clientRef = useRef<RoomClient | null>(null);
@@ -100,6 +104,7 @@ export function useRoomConnection(props: UseRoomConnectionOptions): UseRoomConne
 
   useEffect(() => {
     let cancelled = false;
+    let subscription: Subscription | null = null;
 
     const connect = async () => {
       try {
@@ -108,16 +113,23 @@ export function useRoomConnection(props: UseRoomConnectionOptions): UseRoomConne
 
         if (cancelled) return;
 
-        const cli = new RoomClient({
+        const room = new RoomClient({
           protocol: new Protocol({
             channel: new WebSocketProtocolChannel({ url, jwt }),
           }),
         });
 
-        setClient(cli);
-        setState('connecting');
+        subscription = subscribe(room.listen(), {
+            next: (event: RoomEvent) => {
+                setInc(inc + 1);
+                console.log('jkkk received event:', event, inc);
+            },
+        });
 
-        await cli.start({
+        setClient(room);
+        setState('connecting');
+        
+        await room.start({
           onDone: () => {
             if (cancelled) return;
             setState('done');
@@ -130,7 +142,7 @@ export function useRoomConnection(props: UseRoomConnectionOptions): UseRoomConne
         });
 
         if (enableMessaging) {
-          await cli.messaging.enable();
+          await room.messaging.enable();
         }
 
         if (cancelled) return;
@@ -150,6 +162,7 @@ export function useRoomConnection(props: UseRoomConnectionOptions): UseRoomConne
       // React unmount or deps change → cancel & dispose
       cancelled = true;
       dispose();
+      subscription?.unsubscribe();
     };
     // eslint‑disable‑next‑line react-hooks/exhaustive-deps
   }, []); // run once, just like componentDidMount
@@ -161,5 +174,74 @@ export function useRoomConnection(props: UseRoomConnectionOptions): UseRoomConne
     done: state === 'done',
     error,
     dispose,
+    inc,
   };
+}
+
+export interface UseRoomIndicatorsResult {
+    typing: boolean;
+    thinking: boolean;
+}
+
+export interface UseRoomIndicatorsProps {
+    room: RoomClient | null;
+    path: string;
+}
+
+export function useRoomIndicators({room, path}: UseRoomIndicatorsProps): UseRoomIndicatorsResult {
+    const typingMap = useRef<Record<string, NodeJS.Timeout>>({});
+    const thinkingSet = useRef<Set<string>>(new Set());
+
+    const [typing, setState] = useState(false);
+    const [thinking, setThinking] = useState(false);
+
+    useEffect(() => {
+        if (!room) return;
+
+        const s = subscribe(room.listen(), {
+            next: (event: RoomEvent) => {
+                if (event instanceof RoomMessageEvent) {
+                    const { message } = event;
+
+                    // Ignore messages from ourselves
+                    if (message.fromParticipantId === room.localParticipant?.id) {
+                        return;
+                    }
+
+                    // Ignore messages not for this path
+                    if (message.message.path !== path) {
+                        return;
+                    }
+
+                    if (message.type === "typing") {
+                        // Clear any existing timer for this participant
+                        clearTimeout(typingMap.current[message.fromParticipantId]);
+
+                        // Set a new timer to remove typing after 1 second
+                        typingMap.current[message.fromParticipantId] = setTimeout(() => {
+                            delete typingMap.current[message.fromParticipantId];
+                            setState(Object.keys(typingMap.current).length > 0);
+                        }, 1000);
+
+                        // Update typing state
+                        setState(Object.keys(typingMap.current).length > 0);
+
+                    } else if (message.type === "thinking") {
+                        if (message.message.thinking) {
+                            thinkingSet.current.add(message.fromParticipantId);
+                        } else {
+                            thinkingSet.current.delete(message.fromParticipantId);
+                        }
+
+                        // Update thinking state
+                        setThinking(thinkingSet.current.size > 0);
+                    }
+                }
+            },
+        });
+
+        return () => s.unsubscribe();
+    }, [room, path]);
+
+    return { typing, thinking };
 }

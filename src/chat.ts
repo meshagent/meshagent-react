@@ -1,11 +1,27 @@
-import { useCallback, useMemo, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { RoomClient, Element, Participant, MeshDocument } from "@meshagent/meshagent";
-import { useDocumentConnection } from "document-connection-scope";
 
-export interface ChatMessage {
+import {
+    useDocumentConnection,
+    useDocumentChanged,
+} from "./document-connection-scope";
+
+export interface ChatMessageArgs {
     id: string;
     text: string;
-    attachments: string[];
+    attachments?: string[];
+}
+
+export class ChatMessage {
+    public id: string;
+    public text: string;
+    public attachments: string[];
+
+    constructor({id, text, attachments}: ChatMessageArgs) {
+        this.id = id;
+        this.text = text;
+        this.attachments = attachments ?? [];
+    }
 }
 
 export interface UseMessageChatProps {
@@ -68,6 +84,14 @@ function ensureParticipants(
     }
 }
 
+function mapMessages(doc: MeshDocument): Element[] {
+    const children = doc.root.getChildren() as Element[] || [];
+    const thread = children.find((c) => c.tagName === "messages");
+    const threadChildren = (thread?.getChildren() as Element[]) || [];
+
+    return threadChildren.filter((el) => el.tagName === "message");
+}
+
 export function useChat({
     room,
     path,
@@ -77,13 +101,15 @@ export function useChat({
     includeLocalParticipant}: UseMessageChatProps): UseMessageChatResult {
 
     const { document } = useDocumentConnection({room, path});
+    const [messages, setMessages] = useState<Element[]>(() => document ? mapMessages(document) : []);
 
-    const messages = useMemo(() => {
-        const children = document?.root.getChildren() as Element[] || [];
-        const thread = children.find((c) => c.tagName === "messages");
-        const threadChildren = (thread?.getChildren() as Element[]) || [];
-        return threadChildren.filter((el) => el.tagName === "message");
-    }, [document]);
+    useDocumentChanged({
+        document,
+        onChanged: (doc) => {
+            console.log("jkkk onChanged:", doc);
+            setMessages(mapMessages(doc));
+        }
+    });
 
     const sendMessage = useCallback(
         (message: ChatMessage) => {
@@ -118,21 +144,21 @@ export function useChat({
         },
         [document]);
 
-    useEffect(() => {
-        if (document) {
-            ensureParticipants(
-                document,
-                room.localParticipant!,
-                includeLocalParticipant ?? true,
-                participants ?? [],
-                participantNames ?? []
-            );
+        useEffect(() => {
+            if (document) {
+                ensureParticipants(
+                    document,
+                    room.localParticipant!,
+                    includeLocalParticipant ?? true,
+                    participants ?? [],
+                    participantNames ?? []
+                );
 
-            if (initialMessage) {
-                sendMessage(initialMessage);
+                if (initialMessage) {
+                    sendMessage(initialMessage);
+                }
             }
-        }
-    }, [document]);
+        }, [document]);
 
-    return {messages, sendMessage};
-}
+        return {messages, sendMessage};
+    }

@@ -7,11 +7,11 @@ export interface UseDocumentConnectionProps {
 }
 
 export interface UseDocumentConnectionResult {
-  document: MeshDocument | null;
+    document: MeshDocument | null;
 
-  error: unknown;
+    error: unknown;
 
-  loading: boolean;
+    loading: boolean;
 }
 
 /**
@@ -24,60 +24,71 @@ export interface UseDocumentConnectionResult {
  * @param path  Path to the document inside the room.
  */
 export function useDocumentConnection({ room, path }: UseDocumentConnectionProps): UseDocumentConnectionResult {
-  const [document, setDocument] = useState<MeshDocument | null>(null);
-  const [error, setError] = useState<unknown>(null);
+    const [document, setDocument] = useState<MeshDocument | null>(null);
+    const [error, setError] = useState<unknown>(null);
 
-  /** How many retries have been attempted so far. */
-  const retryCountRef = useRef(0);
-  /** Holds the current pending timeout ID so we can cancel it. */
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const retryCountRef = useRef(0);
+    const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    let cancelled = false; // defence against late async calls
+    useEffect(() => {
+        let cancelled = false;
 
-    const openDocument = async () => {
-      try {
-        const doc = await room.sync.open(path);
-        if (cancelled) return;
+        const openDocument = async () => {
+            try {
+                const doc = await room.sync.open(path);
+                if (cancelled) return;
 
-        setDocument(doc);
-        setError(null);
-      } catch (err) {
-        if (cancelled) return;
+                setDocument(doc);
+                setError(null);
+            } catch (err) {
+                if (cancelled) return;
 
-        console.debug('Retrying to open document:', path, err);
-        setError(err);
+                console.log('Retrying to open document:', path, err);
+                setError(err);
 
-        // Exponential back‑off: 500 ms, 1 s, 2 s, … up to 60 s.
-        const delay = Math.min(60_000, 500 * 2 ** retryCountRef.current);
-        retryCountRef.current += 1;
+                // Exponential back‑off: 500 ms, 1 s, 2 s, … up to 60 s.
+                const delay = Math.min(60_000, 500 * 2 ** retryCountRef.current);
+                retryCountRef.current += 1;
 
-        timeoutRef.current = setTimeout(openDocument, delay);
-      }
+                timeoutRef.current = setTimeout(openDocument, delay);
+            }
+        };
+
+        openDocument();
+
+        return () => {
+            cancelled = true;
+
+            if (timeoutRef.current !== null) {
+                clearTimeout(timeoutRef.current);
+                timeoutRef.current = null;
+            }
+
+            room.sync.close(path);
+            setDocument(null);
+            retryCountRef.current = 0;
+        };
+    }, [path]);
+
+    return {
+        document,
+        error,
+        loading: document === null && error == null,
     };
+}
 
-    // 🔃 1st attempt
-    openDocument();
+type onChangedHandler = (document: MeshDocument) => void;
 
-    return () => {
-      // Component unmount or `room`/`path` change → clean up
-      cancelled = true;
+export function useDocumentChanged({document, onChanged}: {
+    document: MeshDocument | null;
+    onChanged: onChangedHandler;
+}): void {
+    useEffect(() => {
+        if (document) {
+            const s = document.listen(() => onChanged(document));
 
-      if (timeoutRef.current !== null) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
-
-      room.sync.close(path);
-      setDocument(null);
-      retryCountRef.current = 0;
-    };
-  }, [room, path]);
-
-  return {
-    document,
-    error,
-    loading: document === null && error == null,
-  };
+            return () => s.unsubscribe();
+        }
+    }, [document]);
 }
 
