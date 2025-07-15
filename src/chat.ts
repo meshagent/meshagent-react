@@ -92,6 +92,34 @@ function mapMessages(doc: MeshDocument): Element[] {
     return threadChildren.filter((el) => el.tagName === "message");
 }
 
+function* getParticipantNames(document: MeshDocument): IterableIterator<string> {
+    const children = document.root.getChildren() as Element[] || [];
+    const memberNode = children.find((c) => c.tagName === "members");
+    const members = (memberNode?.getChildren() as Element[]) || [];
+
+    for (const member of members) {
+        const name = member.getAttribute("name");
+        if (name) {
+            yield name;
+        }
+    }
+}
+
+function* getOnlineParticipants(room: RoomClient, document: MeshDocument): IterableIterator<Participant> {
+    for (const participantName of getParticipantNames(document)) {
+        if (participantName === room.localParticipant?.getAttribute("name")) {
+            yield room.localParticipant!;
+        }
+
+        for (const remoteParticipant of room.messaging.remoteParticipants) {
+            if (remoteParticipant.getAttribute("name") === participantName) {
+                yield remoteParticipant;
+            }
+        }
+    }
+}
+
+
 export function useChat({
     room,
     path,
@@ -105,18 +133,13 @@ export function useChat({
 
     useDocumentChanged({
         document,
-        onChanged: (doc) => {
-            console.log("jkkk onChanged:", doc);
-            setMessages(mapMessages(doc));
-        }
+        onChanged: (doc) => setMessages(mapMessages(doc)),
     });
 
     const sendMessage = useCallback(
         (message: ChatMessage) => {
             const children = document?.root.getChildren() as Element[] || [];
             const thread = children.find((c) => c.tagName === "messages");
-            const memberNode = children.find((c) => c.tagName === "members");
-            const members = (memberNode?.getChildren() as Element[]) || [];
 
             if (!thread) {
                 return;
@@ -130,9 +153,9 @@ export function useChat({
                 author_ref: null,
             });
 
-            for (const m of members) {
+            for (const participant of getOnlineParticipants(room, document!)) {
                 room.messaging.sendMessage({
-                    to: m.getAttribute("name"),
+                    to: participant,
                     type: "chat",
                     message: {
                         path,

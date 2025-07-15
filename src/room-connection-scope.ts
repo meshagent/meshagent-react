@@ -75,7 +75,6 @@ export interface UseRoomConnectionResult {
   error: unknown;
 
   dispose: () => void;
-  inc: number;
 }
 
 export function useRoomConnection(props: UseRoomConnectionOptions): UseRoomConnectionResult {
@@ -88,7 +87,6 @@ export function useRoomConnection(props: UseRoomConnectionOptions): UseRoomConne
   const [ready, setReady] = useState(false);
   const [state, setState] = useState<'authorizing' | 'connecting' | 'ready' | 'done'>('authorizing');
   const [error, setError] = useState<unknown>(null);
-  const [inc, setInc] = useState(0);
 
   // Keep the latest client in a ref so we can call `dispose` in cleanup.
   const clientRef = useRef<RoomClient | null>(null);
@@ -104,7 +102,6 @@ export function useRoomConnection(props: UseRoomConnectionOptions): UseRoomConne
 
   useEffect(() => {
     let cancelled = false;
-    let subscription: Subscription | null = null;
 
     const connect = async () => {
       try {
@@ -119,13 +116,6 @@ export function useRoomConnection(props: UseRoomConnectionOptions): UseRoomConne
           }),
         });
 
-        subscription = subscribe(room.listen(), {
-            next: (event: RoomEvent) => {
-                setInc(inc + 1);
-                console.log('jkkk received event:', event, inc);
-            },
-        });
-
         setClient(room);
         setState('connecting');
         
@@ -134,7 +124,7 @@ export function useRoomConnection(props: UseRoomConnectionOptions): UseRoomConne
             if (cancelled) return;
             setState('done');
           },
-          onError: (e) => {
+          onError: (e: Error) => {
             if (cancelled) return;
             setError(e);
             setState('done');
@@ -162,7 +152,6 @@ export function useRoomConnection(props: UseRoomConnectionOptions): UseRoomConne
       // React unmount or deps change → cancel & dispose
       cancelled = true;
       dispose();
-      subscription?.unsubscribe();
     };
     // eslint‑disable‑next‑line react-hooks/exhaustive-deps
   }, []); // run once, just like componentDidMount
@@ -174,7 +163,6 @@ export function useRoomConnection(props: UseRoomConnectionOptions): UseRoomConne
     done: state === 'done',
     error,
     dispose,
-    inc,
   };
 }
 

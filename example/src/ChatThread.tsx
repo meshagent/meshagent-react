@@ -50,7 +50,7 @@ export function ChatThread({messages, localParticipantName}: {messages: Element[
   }, [messages]);
 
   return (
-    <div className="flex-1 flex-shrink-0 overflow-y-auto p-4 space-y-4">
+    <div className="flex-1 flex-shrink-1 basis-0 overflow-y-auto p-4 space-y-4">
       {messages.map((message: Element) => {
         const mine = localParticipantName == message.getAttribute("author_name");
 
@@ -93,25 +93,3 @@ function ChatBubble({text, mine}: {text: string; mine: boolean}): React.ReactEle
       </div>
   );
 }
-
-/*
-
-function UserAvatar(): React.ReactElement {
-  return (
-    <Avatar className="h-8 w-8">
-      <AvatarImage src="/avatars/user.webp" alt="You" />
-      <AvatarFallback>YOU</AvatarFallback>
-    </Avatar>
-  );
-}
-
-function AgentAvatar(): React.ReactElement {
-  return (
-    <Avatar className="h-8 w-8">
-      <AvatarImage src="/avatars/bot.webp" alt="AI" />
-      <AvatarFallback>AI</AvatarFallback>
-    </Avatar>
-  );
-}
-
-*/

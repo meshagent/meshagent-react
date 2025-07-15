@@ -43,7 +43,7 @@ export interface LoadingOverlayProps {
  */
 export function LoadingOverlay({ isLoading, className, children }: LoadingOverlayProps) {
   return (
-    <div className="relative">
+    <div className="relative h-full">
       {children}
 
       {isLoading && (

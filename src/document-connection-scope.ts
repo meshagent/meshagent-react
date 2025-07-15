@@ -38,12 +38,14 @@ export function useDocumentConnection({ room, path }: UseDocumentConnectionProps
                 const doc = await room.sync.open(path);
                 if (cancelled) return;
 
+                // sleep for 100 ms to ensure the document is ready
+                await new Promise(resolve => setTimeout(resolve, 100));
+
                 setDocument(doc);
                 setError(null);
             } catch (err) {
                 if (cancelled) return;
 
-                console.log('Retrying to open document:', path, err);
                 setError(err);
 
                 // Exponential back‑off: 500 ms, 1 s, 2 s, … up to 60 s.
@@ -86,6 +88,8 @@ export function useDocumentChanged({document, onChanged}: {
     useEffect(() => {
         if (document) {
             const s = document.listen(() => onChanged(document));
+
+            onChanged(document);
 
             return () => s.unsubscribe();
         }
