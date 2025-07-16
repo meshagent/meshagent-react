@@ -12,7 +12,12 @@ export interface ChatProps {
 }
 
 export function Chat({room, path}: ChatProps) {
-    const {messages, sendMessage} = useChat({room, path});
+    const {
+        messages,
+        sendMessage,
+        selectAttachments,
+    } = useChat({room, path});
+
     const localParticipantName = room.localParticipant!.getAttribute("name");
 
     return (
@@ -24,7 +29,7 @@ export function Chat({room, path}: ChatProps) {
             <CardContent className="flex flex-col flex-1 gap-2 p-0">
                 <ChatThread messages={messages} localParticipantName={localParticipantName} />
                 <ChatTypingIndicator room={room} path={path} />
-                <ChatInput onSubmit={sendMessage} />
+                <ChatInput onSubmit={sendMessage} onFilesSelected={selectAttachments} />
             </CardContent>
         </Card>
     );

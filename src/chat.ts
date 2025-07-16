@@ -1,6 +1,8 @@
 import { useCallback, useState, useEffect } from "react";
 import { RoomClient, Element, Participant, MeshDocument } from "@meshagent/meshagent";
 
+import { FileUpload, MeshagentFileUpload } from "./file-upload";
+
 import {
     useDocumentConnection,
     useDocumentChanged,
@@ -36,6 +38,8 @@ export interface UseMessageChatProps {
 export interface UseMessageChatResult {
     messages: Element[];
     sendMessage: (message: ChatMessage) => void;
+    selectAttachments: (files: File[]) => void;
+    attachments: FileUpload[];
 }
 
 function ensureParticipants(
@@ -119,6 +123,36 @@ function* getOnlineParticipants(room: RoomClient, document: MeshDocument): Itera
     }
 }
 
+const chunkSize = 64 * 1024; // 64 KB
+
+export function fileToAsyncIterable(file: File): AsyncIterable<Uint8Array> {
+  const hasNativeStream = typeof file.stream === 'function';
+
+  async function* nativeStream() {
+    const reader = file.stream().getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        yield value;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  async function* sliceStream() {
+    let offset = 0;
+    while (offset < file.size) {
+      const blob = file.slice(offset, offset + chunkSize);
+      const buffer = await blob.arrayBuffer();
+      yield new Uint8Array(buffer);
+      offset += chunkSize;
+    }
+  }
+
+  return (hasNativeStream ? nativeStream : sliceStream)();
+}
 
 export function useChat({
     room,
@@ -130,11 +164,20 @@ export function useChat({
 
     const { document } = useDocumentConnection({room, path});
     const [messages, setMessages] = useState<Element[]>(() => document ? mapMessages(document) : []);
+    const [attachments, setAttachments] = useState<FileUpload[]>([]);
 
     useDocumentChanged({
         document,
         onChanged: (doc) => setMessages(mapMessages(doc)),
     });
+
+    const selectAttachments = useCallback((files: File[]) => {
+        const attachmentsToUpload = files.map((file) => new MeshagentFileUpload(
+            room, `uploaded-files/${file.name}`, fileToAsyncIterable(file), file.size));
+
+        setAttachments(attachmentsToUpload);
+    }, [room, document]);
+
 
     const sendMessage = useCallback(
         (message: ChatMessage) => {
@@ -167,21 +210,26 @@ export function useChat({
         },
         [document]);
 
-        useEffect(() => {
-            if (document) {
-                ensureParticipants(
-                    document,
-                    room.localParticipant!,
-                    includeLocalParticipant ?? true,
-                    participants ?? [],
-                    participantNames ?? []
-                );
+    useEffect(() => {
+        if (document) {
+            ensureParticipants(
+                document,
+                room.localParticipant!,
+                includeLocalParticipant ?? true,
+                participants ?? [],
+                participantNames ?? []
+            );
 
-                if (initialMessage) {
-                    sendMessage(initialMessage);
-                }
+            if (initialMessage) {
+                sendMessage(initialMessage);
             }
-        }, [document]);
+        }
+    }, [document]);
 
-        return {messages, sendMessage};
-    }
+    return {
+        messages,
+        sendMessage,
+        selectAttachments,
+        attachments,
+    };
+}
