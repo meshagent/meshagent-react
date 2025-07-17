@@ -168,7 +168,9 @@ export function useChat({
 
     useDocumentChanged({
         document,
-        onChanged: (doc) => setMessages(mapMessages(doc)),
+        onChanged: (doc) => {
+            setMessages(mapMessages(doc));
+        },
     });
 
     const selectAttachments = useCallback((files: File[]) => {
