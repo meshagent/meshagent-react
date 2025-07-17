@@ -32,7 +32,7 @@
     },
     "dependencies": {
         "@meshagent/meshagent": "^0.3.1",
-        "react-dom": "19.0.0",
+        "react-dom": "^19.1.0",
         "typescript": "^5.8.3",
         "uuid": "^11.1.0"
     }
