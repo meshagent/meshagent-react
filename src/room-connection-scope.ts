@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { subscribe, Subscription } from './subscribe-async-gen';
+import { subscribe } from './subscribe-async-gen';
 import { RoomEvent, RoomMessageEvent } from '@meshagent/meshagent';
 
 import {
@@ -189,7 +189,7 @@ export function useRoomIndicators({room, path}: UseRoomIndicatorsProps): UseRoom
         const s = subscribe(room.listen(), {
             next: (event: RoomEvent) => {
                 if (event instanceof RoomMessageEvent) {
-                    const { message } = event;
+                    const { message } = event.message;
 
                     // Ignore messages from ourselves
                     if (message.fromParticipantId === room.localParticipant?.id) {

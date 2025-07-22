@@ -87,9 +87,7 @@ export function useDocumentChanged({document, onChanged}: {
 }): void {
     useEffect(() => {
         if (document) {
-            const s = document.listen(() => {
-                setTimeout(() => onChanged(document), 40);
-            });
+            const s = document.listen(() => onChanged(document));
 
             onChanged(document);
 
