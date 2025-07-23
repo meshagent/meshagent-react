@@ -179,41 +179,39 @@ export function useChat({
         setAttachments(attachmentsToUpload);
     }, [room]);
 
+    const sendMessage = useCallback((message: ChatMessage) => {
+        const children = document?.root.getChildren() as Element[] || [];
+        const thread = children.find((c) => c.tagName === "messages");
 
-    const sendMessage = useCallback(
-        (message: ChatMessage) => {
-            const children = document?.root.getChildren() as Element[] || [];
-            const thread = children.find((c) => c.tagName === "messages");
+        if (!thread) {
+            return;
+        }
 
-            if (!thread) {
-                return;
-            }
+        const m = thread.createChildElement("message", {
+            id: message.id,
+            text: message.text,
+            created_at: new Date().toISOString(),
+            author_name: room.localParticipant!.getAttribute("name"),
+            author_ref: null,
+        });
 
-            const m = thread.createChildElement("message", {
-                id: message.id,
-                text: message.text,
-                created_at: new Date().toISOString(),
-                author_name: room.localParticipant!.getAttribute("name"),
-                author_ref: null,
+        for (const path of message.attachments) {
+            m.createChildElement("file", { path });
+        }
+
+        for (const participant of getOnlineParticipants(room, document!)) {
+            room.messaging.sendMessage({
+                to: participant,
+                type: "chat",
+                message: {
+                    path,
+                    text: message.text,
+                    attachments: message.attachments.map(path => ({ path })),
+                },
             });
-
-            for (const path of message.attachments) {
-                m.createChildElement("file", { path });
-            }
-
-            for (const participant of getOnlineParticipants(room, document!)) {
-                room.messaging.sendMessage({
-                    to: participant,
-                    type: "chat",
-                    message: {
-                        path,
-                        text: message.text,
-                        attachments: message.attachments.map(path => ({ path })),
-                    },
-                });
-            }
-        },
-        [document, attachments]);
+        }
+    },
+    [document, attachments]);
 
     useEffect(() => {
         if (document) {
@@ -238,4 +236,4 @@ export function useChat({
         attachments,
         setAttachments,
     };
-}
+    }
