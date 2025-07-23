@@ -236,4 +236,4 @@ export function useChat({
         attachments,
         setAttachments,
     };
-    }
+}
