@@ -189,7 +189,7 @@ export function useRoomIndicators({room, path}: UseRoomIndicatorsProps): UseRoom
         const s = subscribe(room.listen(), {
             next: (event: RoomEvent) => {
                 if (event instanceof RoomMessageEvent) {
-                    const { message } = event.message;
+                    const { message } = event;
 
                     // Ignore messages from ourselves
                     if (message.fromParticipantId === room.localParticipant?.id) {
