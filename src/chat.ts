@@ -41,6 +41,7 @@ export interface UseMessageChatResult {
     selectAttachments: (files: File[]) => void;
     attachments: FileUpload[];
     setAttachments: (attachments: FileUpload[]) => void;
+    schemaFileExists: boolean;
 }
 
 function ensureParticipants(
@@ -163,7 +164,7 @@ export function useChat({
     initialMessage,
     includeLocalParticipant}: UseMessageChatProps): UseMessageChatResult {
 
-    const { document } = useDocumentConnection({room, path});
+    const { document, schemaFileExists } = useDocumentConnection({room, path});
     const [messages, setMessages] = useState<Element[]>(() => document ? mapMessages(document) : []);
     const [attachments, setAttachments] = useState<FileUpload[]>([]);
 
@@ -235,5 +236,6 @@ export function useChat({
         selectAttachments,
         attachments,
         setAttachments,
+        schemaFileExists,
     };
 }
