@@ -96,7 +96,7 @@ export function useDocumentConnection({ room, path }: UseDocumentConnectionProps
         document,
         error,
         loading: document === null && error == null,
-        schemaFileExists,
+        schemaFileExists: schemaFileExists !== null ? schemaFileExists : true,
     };
 }
 
