@@ -8,10 +8,9 @@ export interface UseDocumentConnectionProps {
 
 export interface UseDocumentConnectionResult {
     document: MeshDocument | null;
-
     error: unknown;
-
     loading: boolean;
+    schemaFileExists: boolean;
 }
 
 /**
@@ -24,19 +23,34 @@ export interface UseDocumentConnectionResult {
  * @param path  Path to the document inside the room.
  */
 export function useDocumentConnection({ room, path }: UseDocumentConnectionProps): UseDocumentConnectionResult {
+    const [schemaFileExists, setSchemaFileExists] = useState<boolean | null>(null);
     const [document, setDocument] = useState<MeshDocument | null>(null);
     const [error, setError] = useState<unknown>(null);
 
+    const openedRef = useRef(false);
     const retryCountRef = useRef(0);
     const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const pathExtension = path.split('.').pop()?.toLowerCase();
+    const schemaFile = `.schemas/${pathExtension}.json`;
 
     useEffect(() => {
         let cancelled = false;
 
         const openDocument = async () => {
             try {
+                const schemaExists = await room.storage.exists(schemaFile);
+                if (schemaExists) {
+                    setSchemaFileExists(true);
+                } else {
+                    setSchemaFileExists(false);
+                    return;
+                }
+
                 const doc = await room.sync.open(path);
+
                 if (cancelled) return;
+                openedRef.current = true;
 
                 // sleep for 100 ms to ensure the document is ready
                 await new Promise(resolve => setTimeout(resolve, 100));
@@ -44,6 +58,8 @@ export function useDocumentConnection({ room, path }: UseDocumentConnectionProps
                 setDocument(doc);
                 setError(null);
             } catch (err) {
+                console.error('Failed to open document:', err);
+
                 if (cancelled) return;
 
                 setError(err);
@@ -66,9 +82,13 @@ export function useDocumentConnection({ room, path }: UseDocumentConnectionProps
                 timeoutRef.current = null;
             }
 
-            room.sync.close(path);
+            if (openedRef.current) {
+                room.sync.close(path);
+            }
+
             setDocument(null);
             retryCountRef.current = 0;
+            openedRef.current = false;
         };
     }, [path]);
 
@@ -76,6 +96,7 @@ export function useDocumentConnection({ room, path }: UseDocumentConnectionProps
         document,
         error,
         loading: document === null && error == null,
+        schemaFileExists: schemaFileExists !== null ? schemaFileExists : true,
     };
 }
 
