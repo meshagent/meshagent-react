@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { subscribe, Subscription } from './subscribe-async-gen';
+import { subscribe } from './subscribe-async-gen';
 import { RoomEvent, RoomMessageEvent } from '@meshagent/meshagent';
 
 import {
