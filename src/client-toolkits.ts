@@ -1,18 +1,24 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { RemoteToolkit } from '@meshagent/meshagent';
 
 interface ClientToolkitsProps {
-  toolkits: RemoteToolkit[];
-  public?: boolean;
+    toolkits: RemoteToolkit[];
+    public?: boolean;
 }
 
 export const useClientToolkits = ({
-  toolkits,
-  public: isPublic = false,
+    toolkits,
+    public: isPublic = false,
 }: ClientToolkitsProps) => {
-  useEffect(() => {
-    toolkits.forEach(toolkit => toolkit.start({public_: isPublic}));
+    const refInit = useRef<boolean>(false);
 
-    return () => toolkits.forEach(toolkit => toolkit.stop());
-  }, []);
+    useEffect(() => {
+        if (refInit.current) {
+            refInit.current = true;
+
+            toolkits.forEach(toolkit => toolkit.start({public_: isPublic}));
+        }
+
+        return () => toolkits.forEach(toolkit => toolkit.stop());
+    }, [toolkits, isPublic]);
 };
