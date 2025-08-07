@@ -191,10 +191,14 @@ export function useRoomIndicators({room, path}: UseRoomIndicatorsProps): UseRoom
                 if (event instanceof RoomMessageEvent) {
                     const { message } = event;
 
+                    console.log("jkkk 1 Received message:", message, message.type, message.fromParticipantId, room.localParticipant?.id);
+
                     // Ignore messages from ourselves
                     if (message.fromParticipantId === room.localParticipant?.id) {
                         return;
                     }
+
+                    console.log("jkkk 2 Received message:", message, message.type, message.message.path, path);
 
                     // Ignore messages not for this path
                     if (message.message.path !== path) {

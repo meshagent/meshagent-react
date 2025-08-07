@@ -15,7 +15,7 @@ export function useWaitForAgentParticipant(connection: UseRoomConnectionResult |
             const agentParticipant = participants.find(p => p.role === 'agent');
 
             if (agentParticipant) {
-                setParticipant(agentParticipant);
+                setParticipant(agentParticipant ?? null);
             }
         }
 

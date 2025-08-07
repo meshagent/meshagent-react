@@ -164,7 +164,27 @@ export function useChat({
     initialMessage,
     includeLocalParticipant}: UseMessageChatProps): UseMessageChatResult {
 
-    const { document, schemaFileExists } = useDocumentConnection({room, path});
+    const { document, schemaFileExists } = useDocumentConnection({
+        room,
+        path,
+        onConnected: (doc) => {
+            ensureParticipants(
+                doc,
+                room.localParticipant!,
+                includeLocalParticipant ?? true,
+                participants ?? [],
+                participantNames ?? []
+            );
+
+            if (initialMessage) {
+                sendMessage(initialMessage);
+            }
+        },
+        onError: (error) => {
+            console.error("Failed to connect to document:", error);
+        }
+    });
+
     const [messages, setMessages] = useState<Element[]>(() => document ? mapMessages(document) : []);
     const [attachments, setAttachments] = useState<FileUpload[]>([]);
 
@@ -213,22 +233,6 @@ export function useChat({
         }
     },
     [document, attachments]);
-
-    useEffect(() => {
-        if (document) {
-            ensureParticipants(
-                document,
-                room.localParticipant!,
-                includeLocalParticipant ?? true,
-                participants ?? [],
-                participantNames ?? []
-            );
-
-            if (initialMessage) {
-                sendMessage(initialMessage);
-            }
-        }
-    }, [document]);
 
     return {
         messages,

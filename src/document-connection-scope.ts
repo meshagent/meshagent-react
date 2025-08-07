@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { MeshDocument, RoomClient } from '@meshagent/meshagent';
+import { MeshDocument, RoomClient, RemoteParticipant } from '@meshagent/meshagent';
 
 export interface UseDocumentConnectionProps {
     room: RoomClient;
     path: string;
+    onConnected?: (document: MeshDocument) => void;
+    onError?: (error: unknown) => void;
 }
 
 export interface UseDocumentConnectionResult {
@@ -22,7 +24,7 @@ export interface UseDocumentConnectionResult {
  * @param room  An already‑connected RoomClient.
  * @param path  Path to the document inside the room.
  */
-export function useDocumentConnection({ room, path }: UseDocumentConnectionProps): UseDocumentConnectionResult {
+export function useDocumentConnection({ room, path, onConnected, onError }: UseDocumentConnectionProps): UseDocumentConnectionResult {
     const [schemaFileExists, setSchemaFileExists] = useState<boolean | null>(null);
     const [document, setDocument] = useState<MeshDocument | null>(null);
     const [error, setError] = useState<unknown>(null);
@@ -57,12 +59,19 @@ export function useDocumentConnection({ room, path }: UseDocumentConnectionProps
 
                 setDocument(doc);
                 setError(null);
+
+                if (onConnected) {
+                    onConnected(doc);
+                }
             } catch (err) {
                 console.error('Failed to open document:', err);
 
                 if (cancelled) return;
 
                 setError(err);
+                if (onError) {
+                    onError(err);
+                }
 
                 // Exponential back‑off: 500 ms, 1 s, 2 s, … up to 60 s.
                 const delay = Math.min(60_000, 500 * 2 ** retryCountRef.current);
@@ -117,3 +126,24 @@ export function useDocumentChanged({document, onChanged}: {
     }, [document]);
 }
 
+
+export function useRoomParticipants(room: RoomClient): RemoteParticipant[] {
+    const [participants, setParticipants] = useState<RemoteParticipant[]>(
+        [...room.messaging.remoteParticipants]
+    );
+
+    useEffect(() => {
+        const updateParticipants = () => setParticipants(
+            [...room.messaging.remoteParticipants]);
+
+        room.messaging.on('participant_added', updateParticipants);
+        room.messaging.on('participant_removed', updateParticipants);
+
+        return () => {
+            room.messaging.off('participant_added', updateParticipants);
+            room.messaging.off('participant_removed', updateParticipants);
+        };
+    }, [room]);
+
+    return participants;
+}
