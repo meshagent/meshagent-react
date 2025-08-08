@@ -126,22 +126,26 @@ export function useDocumentChanged({document, onChanged}: {
     }, [document]);
 }
 
-
-export function useRoomParticipants(room: RoomClient): RemoteParticipant[] {
-    const [participants, setParticipants] = useState<RemoteParticipant[]>(
-        [...room.messaging.remoteParticipants]
-    );
+export function useRoomParticipants(room: RoomClient | null): Iterable<RemoteParticipant> {
+    const [participants, setParticipants] = useState<Iterable<RemoteParticipant>>(() => []);
 
     useEffect(() => {
-        const updateParticipants = () => setParticipants(
-            [...room.messaging.remoteParticipants]);
+        if (!room || !room.messaging) {
+            return;
+        }
+
+        const updateParticipants = () => setParticipants(room.messaging.remoteParticipants);
 
         room.messaging.on('participant_added', updateParticipants);
         room.messaging.on('participant_removed', updateParticipants);
+        room.messaging.on('messaging_enabled', updateParticipants);
+
+        updateParticipants();
 
         return () => {
             room.messaging.off('participant_added', updateParticipants);
             room.messaging.off('participant_removed', updateParticipants);
+            room.messaging.on('messaging_enabled', updateParticipants);
         };
     }, [room]);
 

@@ -8,8 +8,6 @@ interface ClientToolkitsProps {
 
 export const useClientToolkits = ({ toolkits, public: isPublic = false }: ClientToolkitsProps) => {
     useEffect(() => {
-        console.log("jkkkk useEffect called for toolkits", toolkits);
-
         toolkits.forEach(toolkit => toolkit.start({public_: isPublic}));
 
         return () => toolkits.forEach(toolkit => toolkit.stop());
