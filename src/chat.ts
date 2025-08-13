@@ -1,5 +1,5 @@
 import { useCallback, useState, useMemo } from "react";
-import { RoomClient, Element, Participant, MeshDocument } from "@meshagent/meshagent";
+import { RoomClient, Element, Participant, MeshDocument, RemoteParticipant } from "@meshagent/meshagent";
 
 import { FileUpload, MeshagentFileUpload } from "./file-upload";
 import { useRoomParticipants } from "./document-connection-scope";
@@ -41,6 +41,7 @@ export interface UseMessageChatResult {
     setAttachments: (attachments: FileUpload[]) => void;
     schemaFileExists: boolean;
     onlineParticipants: Participant[];
+    cancelRequest?: () => void;
 }
 
 function ensureParticipants(
@@ -238,7 +239,19 @@ export function useChat({
             });
         }
     },
-    [document, attachments, onlineParticipants, room]);
+    [document, path, attachments, onlineParticipants, room]);
+
+    const cancelRequest = useCallback(() => {
+        for (const participant of onlineParticipants) {
+            if (participant instanceof RemoteParticipant && participant.role === 'agent') {
+                room.messaging.sendMessage({
+                    to: participant,
+                    type: "cancel",
+                    message: { path },
+                });
+            }
+        }
+    }, [room, path, onlineParticipants]);
 
     return {
         messages,
@@ -248,5 +261,6 @@ export function useChat({
         setAttachments,
         schemaFileExists,
         onlineParticipants,
+        cancelRequest,
     };
 }
