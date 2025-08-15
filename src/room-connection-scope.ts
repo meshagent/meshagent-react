@@ -178,9 +178,9 @@ export interface UseRoomIndicatorsProps {
 
 export function useRoomIndicators({room, path}: UseRoomIndicatorsProps): UseRoomIndicatorsResult {
     const typingMap = useRef<Record<string, NodeJS.Timeout>>({});
-    const thinkingSet = useRef<Set<string>>(new Set());
+    const thinkingMap = useRef<Record<string, NodeJS.Timeout>>({});
 
-    const [typing, setState] = useState(false);
+    const [typing, setTyping] = useState(false);
     const [thinking, setThinking] = useState(false);
 
     useEffect(() => {
@@ -208,21 +208,27 @@ export function useRoomIndicators({room, path}: UseRoomIndicatorsProps): UseRoom
                         // Set a new timer to remove typing after 1 second
                         typingMap.current[message.fromParticipantId] = setTimeout(() => {
                             delete typingMap.current[message.fromParticipantId];
-                            setState(Object.keys(typingMap.current).length > 0);
+
+                            setTyping(Object.keys(typingMap.current).length > 0);
                         }, 1000);
 
                         // Update typing state
-                        setState(Object.keys(typingMap.current).length > 0);
+                        setTyping(Object.keys(typingMap.current).length > 0);
 
                     } else if (message.type === "thinking") {
+                        clearTimeout(thinkingMap.current[message.fromParticipantId]);
+
                         if (message.message.thinking) {
-                            thinkingSet.current.add(message.fromParticipantId);
+                            thinkingMap.current[message.fromParticipantId] = setTimeout(() => {
+                                delete thinkingMap.current[message.fromParticipantId];
+
+                                setThinking(Object.keys(thinkingMap.current).length > 0);
+                            }, 5000);
                         } else {
-                            thinkingSet.current.delete(message.fromParticipantId);
+                            delete thinkingMap.current[message.fromParticipantId];
                         }
 
-                        // Update thinking state
-                        setThinking(thinkingSet.current.size > 0);
+                        setThinking(Object.keys(thinkingMap.current).length > 0);
                     }
                 }
             },

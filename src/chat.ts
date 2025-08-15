@@ -1,12 +1,10 @@
-import { useCallback, useState, useEffect } from "react";
-import { RoomClient, Element, Participant, MeshDocument } from "@meshagent/meshagent";
+import { useCallback, useState, useMemo } from "react";
+import { RoomClient, Element, Participant, MeshDocument, RemoteParticipant } from "@meshagent/meshagent";
 
 import { FileUpload, MeshagentFileUpload } from "./file-upload";
+import { useRoomParticipants } from "./document-connection-scope";
 
-import {
-    useDocumentConnection,
-    useDocumentChanged,
-} from "./document-connection-scope";
+import { useDocumentConnection, useDocumentChanged } from "./document-connection-scope";
 
 export interface ChatMessageArgs {
     id: string;
@@ -42,6 +40,8 @@ export interface UseMessageChatResult {
     attachments: FileUpload[];
     setAttachments: (attachments: FileUpload[]) => void;
     schemaFileExists: boolean;
+    onlineParticipants: Participant[];
+    cancelRequest?: () => void;
 }
 
 function ensureParticipants(
@@ -111,13 +111,9 @@ function* getParticipantNames(document: MeshDocument): IterableIterator<string> 
     }
 }
 
-function* getOnlineParticipants(room: RoomClient, document: MeshDocument): IterableIterator<Participant> {
-    for (const participantName of getParticipantNames(document)) {
-        if (participantName === room.localParticipant?.getAttribute("name")) {
-            yield room.localParticipant!;
-        }
-
-        for (const remoteParticipant of room.messaging.remoteParticipants) {
+function* getOnlineParticipants(roomParticipants: Iterable<Participant>, participantNames: Iterable<string>): Iterable<Participant> {
+    for (const participantName of participantNames) {
+        for (const remoteParticipant of roomParticipants) {
             if (remoteParticipant.getAttribute("name") === participantName) {
                 yield remoteParticipant;
             }
@@ -164,13 +160,38 @@ export function useChat({
     initialMessage,
     includeLocalParticipant}: UseMessageChatProps): UseMessageChatResult {
 
-    const { document, schemaFileExists } = useDocumentConnection({room, path});
+    const { document, schemaFileExists } = useDocumentConnection({
+        room,
+        path,
+        onConnected: (doc) => {
+            ensureParticipants(
+                doc,
+                room.localParticipant!,
+                includeLocalParticipant ?? true,
+                participants ?? [],
+                participantNames ?? []
+            );
+
+            if (initialMessage) {
+                sendMessage(initialMessage);
+            }
+        },
+        onError: (error) => {
+            console.error("Failed to connect to document:", error);
+        }
+    });
+
     const [messages, setMessages] = useState<Element[]>(() => document ? mapMessages(document) : []);
     const [attachments, setAttachments] = useState<FileUpload[]>([]);
+    const [documentMembers, setDocumentMembers] = useState<Iterable<string>>(() => document ? getParticipantNames(document) : []);
 
     useDocumentChanged({
         document,
-        onChanged: (doc) => setMessages(mapMessages(doc)),
+        onChanged: (doc) => {
+            setMessages(mapMessages(doc));
+
+            setDocumentMembers(getParticipantNames(doc));
+        },
     });
 
     const selectAttachments = useCallback((files: File[]) => {
@@ -179,6 +200,12 @@ export function useChat({
 
         setAttachments(attachmentsToUpload);
     }, [room]);
+
+    const roomParticipants = useRoomParticipants(room);
+
+    const onlineParticipants = useMemo<Participant[]>(
+        () => Array.from(getOnlineParticipants(roomParticipants, documentMembers)),
+        [roomParticipants, documentMembers]);
 
     const sendMessage = useCallback((message: ChatMessage) => {
         const children = document?.root.getChildren() as Element[] || [];
@@ -200,7 +227,7 @@ export function useChat({
             m.createChildElement("file", { path });
         }
 
-        for (const participant of getOnlineParticipants(room, document!)) {
+        for (const participant of onlineParticipants) {
             room.messaging.sendMessage({
                 to: participant,
                 type: "chat",
@@ -212,23 +239,19 @@ export function useChat({
             });
         }
     },
-    [document, attachments]);
+    [document, path, attachments, onlineParticipants, room]);
 
-    useEffect(() => {
-        if (document) {
-            ensureParticipants(
-                document,
-                room.localParticipant!,
-                includeLocalParticipant ?? true,
-                participants ?? [],
-                participantNames ?? []
-            );
-
-            if (initialMessage) {
-                sendMessage(initialMessage);
+    const cancelRequest = useCallback(() => {
+        for (const participant of onlineParticipants) {
+            if (participant instanceof RemoteParticipant && participant.role === 'agent') {
+                room.messaging.sendMessage({
+                    to: participant,
+                    type: "cancel",
+                    message: { path },
+                });
             }
         }
-    }, [document]);
+    }, [room, path, onlineParticipants]);
 
     return {
         messages,
@@ -237,5 +260,7 @@ export function useChat({
         attachments,
         setAttachments,
         schemaFileExists,
+        onlineParticipants,
+        cancelRequest,
     };
 }
