@@ -31,7 +31,11 @@
         "@types/react-dom": "^19.1.6"
     },
     "dependencies": {
+<<<<<<< Updated upstream
         "@meshagent/meshagent": "^0.5.15",
+=======
+        "@meshagent/meshagent": "^0.5.13",
+>>>>>>> Stashed changes
         "livekit-client": "^2.15.5",
         "react": "^19.1.0",
         "react-dom": "^19.1.0",
