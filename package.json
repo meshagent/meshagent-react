@@ -1,6 +1,6 @@
 {
     "name": "@meshagent/meshagent-react",
-    "version": "0.25.1",
+    "version": "0.25.2",
     "description": "Meshagent React Client",
     "homepage": "https://github.com/meshagent/meshagent-react",
     "scripts": {
@@ -34,7 +34,7 @@
         "base-64": "^1.0.0",
         "livekit-client": "^2.15.5",
         "react": "^19.1.0",
-        "@meshagent/meshagent": "^0.25.1",
+        "@meshagent/meshagent": "^0.25.2",
         "react-dom": "^19.1.0",
         "typescript": "^5.8.3",
         "uuid": "^11.1.0",
