@@ -113,22 +113,24 @@ export class MeshagentFileUpload extends FileUpload {
     }
 
     try {
-      const handle = await this.room.storage.open(this.path, { overwrite: true });
+      this.status = UploadStatus.Uploading;
 
-      try {
-        this.status = UploadStatus.Uploading;
-
-        for await (const chunk of this.dataStream) {
-          await this.room.storage.write(handle, chunk);
-          this._bytesUploaded += chunk.length;
-          this.emit("progress", {
+      const self = this;
+      async function* trackedChunks(): AsyncIterable<Uint8Array> {
+        for await (const chunk of self.dataStream) {
+          self._bytesUploaded += chunk.length;
+          self.emit("progress", {
             status: UploadStatus.Uploading,
-            progress: this.bytesUploaded / this.size,
+            progress: self.bytesUploaded / self.size,
           });
+          yield chunk;
         }
-      } finally {
-        await this.room.storage.close(handle);
       }
+
+      await this.room.storage.uploadStream(this.path, trackedChunks(), {
+        overwrite: true,
+        size: this.size,
+      });
 
       this._resolveDone();
       this.status = UploadStatus.Completed;
@@ -142,4 +144,3 @@ export class MeshagentFileUpload extends FileUpload {
     }
   }
 }
-
