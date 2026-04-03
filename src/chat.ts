@@ -44,6 +44,11 @@ export interface UseMessageChatResult {
     cancelRequest?: () => void;
 }
 
+function getParticipantName(participant: { getAttribute(name: string): unknown }): string | null {
+    const name = participant.getAttribute("name");
+    return typeof name === "string" && name.length > 0 ? name : null;
+}
+
 function ensureParticipants(
     document: MeshDocument,
     localParticipant: Participant,
@@ -65,12 +70,12 @@ function ensureParticipants(
         for (const member of child.getChildren()
           .filter((c): c is Element => (c as Element).tagName !== undefined)) {
 
-          const name = member.getAttribute("name");
+          const name = getParticipantName(member);
           if (name) existing.add(name);
         }
 
         for (const part of retParticipants) {
-            const name = part.getAttribute("name");
+            const name = getParticipantName(part);
 
             if (name && !existing.has(name)) {
               child.createChildElement("member", { name });
@@ -104,7 +109,7 @@ function* getParticipantNames(document: MeshDocument): IterableIterator<string> 
     const members = (memberNode?.getChildren() as Element[]) || [];
 
     for (const member of members) {
-        const name = member.getAttribute("name");
+        const name = getParticipantName(member);
         if (name) {
             yield name;
         }
@@ -114,7 +119,7 @@ function* getParticipantNames(document: MeshDocument): IterableIterator<string> 
 function* getOnlineParticipants(roomParticipants: Iterable<Participant>, participantNames: Iterable<string>): Iterable<Participant> {
     for (const participantName of participantNames) {
         for (const remoteParticipant of roomParticipants) {
-            if (remoteParticipant.getAttribute("name") === participantName) {
+            if (getParticipantName(remoteParticipant) === participantName) {
                 yield remoteParticipant;
             }
         }
@@ -219,7 +224,7 @@ export function useChat({
             id: message.id,
             text: message.text,
             created_at: new Date().toISOString(),
-            author_name: room.localParticipant!.getAttribute("name"),
+            author_name: getParticipantName(room.localParticipant!) ?? "",
             author_ref: null,
         });
 
