@@ -1,15 +1,40 @@
 import { useEffect } from 'react';
-import { RemoteToolkit } from '@meshagent/meshagent';
+import { RoomClient, startHostedToolkit, Toolkit } from '@meshagent/meshagent';
 
 interface ClientToolkitsProps {
-    toolkits: RemoteToolkit[];
+    room: RoomClient;
+    toolkits: Toolkit[];
     public?: boolean;
 }
 
-export const useClientToolkits = ({ toolkits, public: isPublic = false }: ClientToolkitsProps) => {
+export const useClientToolkits = ({ room, toolkits, public: isPublic = false }: ClientToolkitsProps) => {
     useEffect(() => {
-        toolkits.forEach(toolkit => toolkit.start({public_: isPublic}));
+        let disposed = false;
+        const startedToolkits: Array<{ stop(): Promise<void> }> = [];
 
-        return () => toolkits.forEach(toolkit => toolkit.stop());
-    }, [toolkits, isPublic]);
+        void (async () => {
+            try {
+                for (const toolkit of toolkits) {
+                    const hostedToolkit = await startHostedToolkit({
+                        room,
+                        toolkit,
+                        public_: isPublic,
+                    });
+                    if (disposed) {
+                        await hostedToolkit.stop();
+                        continue;
+                    }
+                    startedToolkits.push(hostedToolkit);
+                }
+            } catch (error) {
+                await Promise.all(startedToolkits.map((toolkit) => toolkit.stop()));
+                console.error("unable to start client toolkits", error);
+            }
+        })();
+
+        return () => {
+            disposed = true;
+            void Promise.all(startedToolkits.map((toolkit) => toolkit.stop()));
+        };
+    }, [room, toolkits, isPublic]);
 };
