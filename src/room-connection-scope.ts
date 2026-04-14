@@ -32,27 +32,19 @@ export const developmentAuthorization = ({
   roomName: string;
   secret: string;
 }): (() => Promise<RoomConnectionInfo>) => async () => {
-    const token: ParticipantToken = new ParticipantToken({
-      name: participantName,
-      projectId,
-      apiKeyId,
-    });
+  const token: ParticipantToken = new ParticipantToken({
+    name: participantName,
+    projectId,
+    apiKeyId,
+  });
 
-    token.addRoomGrant(roomName);
-    token.addRoleGrant('user');
+  token.addRoomGrant(roomName);
+  token.addRoleGrant('user');
 
-    const jwt = await token.toJwt({ token: secret });
+  const jwt = await token.toJwt({ token: secret });
 
-    return {url, jwt};
-  };
-
-export const staticAuthorization = ({
-  url,
-  jwt,
-}: {
-  url: string;
-  jwt: string;
-}): (() => Promise<RoomConnectionInfo>) => async () => ({ url, jwt });
+  return {url, jwt};
+};
 
 export interface UseRoomConnectionOptions {
   /** Async function that returns `{ url, jwt }` for the room. */
@@ -78,10 +70,7 @@ export interface UseRoomConnectionResult {
 }
 
 export function useRoomConnection(props: UseRoomConnectionOptions): UseRoomConnectionResult {
-  const {
-    authorization,
-    enableMessaging = true,
-  } = props;
+  const { authorization, enableMessaging = true } = props;
 
   const [client, setClient] = useState<RoomClient | null>(null);
   const [ready, setReady] = useState(false);
