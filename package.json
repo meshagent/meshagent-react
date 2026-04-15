@@ -11,11 +11,13 @@
     "type": "module",
     "module": "dist/esm/index.js",
     "main": "./dist/esm/index.js",
-    "types": "dist/index.d.ts",
+    "types": "./dist/esm/index.d.ts",
     "exports": {
         ".": {
-            "module": "./dist/esm/index.js",
-            "default": "./dist/cjs/index.js"
+            "types": "./dist/esm/index.d.ts",
+            "import": "./dist/esm/index.js",
+            "require": "./dist/cjs/index.js",
+            "default": "./dist/esm/index.js"
         },
         "./package.json": "./package.json"
     },

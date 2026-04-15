@@ -4,9 +4,8 @@ import { RoomEvent, RoomMessageEvent } from '@meshagent/meshagent';
 
 import {
     ParticipantToken,
-    Protocol,
     RoomClient,
-    WebSocketProtocolChannel,
+    WebSocketClientProtocol,
 } from '@meshagent/meshagent';
 
 export interface RoomConnectionInfo {
@@ -100,9 +99,7 @@ export function useRoomConnection(props: UseRoomConnectionOptions): UseRoomConne
         if (cancelled) return;
 
         const room = new RoomClient({
-          protocol: new Protocol({
-            channel: new WebSocketProtocolChannel({ url, jwt }),
-          }),
+          protocolFactory: WebSocketClientProtocol.createFactory({ url, token: jwt }),
         });
 
         setClient(room);
@@ -113,7 +110,7 @@ export function useRoomConnection(props: UseRoomConnectionOptions): UseRoomConne
             if (cancelled) return;
             setState('done');
           },
-          onError: (e: Error) => {
+          onError: (e: unknown) => {
             if (cancelled) return;
             setError(e);
             setState('done');
@@ -121,7 +118,7 @@ export function useRoomConnection(props: UseRoomConnectionOptions): UseRoomConne
         });
 
         if (enableMessaging) {
-          await room.messaging.enable();
+          room.messaging.enable();
         }
 
         if (cancelled) return;

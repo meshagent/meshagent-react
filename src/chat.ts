@@ -64,11 +64,11 @@ function ensureParticipants(
     const existing = new Set<string>();
 
     for (const child of document.root.getChildren()
-      .filter((c): c is Element => (c as Element).tagName !== undefined)) {
+      .filter((c: unknown): c is Element => c instanceof Element)) {
 
       if (child.tagName === "members") {
         for (const member of child.getChildren()
-          .filter((c): c is Element => (c as Element).tagName !== undefined)) {
+          .filter((c: unknown): c is Element => c instanceof Element)) {
 
           const name = getParticipantName(member);
           if (name) existing.add(name);
