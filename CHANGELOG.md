@@ -1,5 +1,9 @@
 ## [0.37.2]
-- Stability
+- Reintroduced `staticAuthorization` for parity with the Flutter room utilities.
+- `useRoomConnection` now retries retryable startup failures, exposes a `retrying` state, and supports `onReady` plus custom client factories.
+- `useDocumentConnection` now supports `schema` and `initialJson`, reacts to room/path changes, and safely closes documents that finish opening after unmount.
+- `useRoomParticipants` now cleans up listeners correctly and updates cleanly when the room instance changes.
+- Added `livekit-client.ts` and `livekit-protocol.ts`, including a `room.livekit` helper and a typed LiveKit data-channel protocol adapter.
 
 ## [0.37.1]
 - Added `useAuth` to the React auth package to handle OAuth redirect/callback, token refresh, and profile loading without React Query, plus a `useEnsureLogin` compatibility wrapper.

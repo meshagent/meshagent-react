@@ -1,153 +1,218 @@
 import { useEffect, useRef, useState } from 'react';
-import { MeshDocument, RoomClient, RemoteParticipant } from '@meshagent/meshagent';
+import { MeshDocument, MeshSchema, RoomClient, RemoteParticipant } from '@meshagent/meshagent';
 
 export interface UseDocumentConnectionProps {
-    room: RoomClient;
-    path: string;
-    onConnected?: (document: MeshDocument) => void;
-    onError?: (error: unknown) => void;
+  room: RoomClient;
+  path: string;
+  schema?: MeshSchema;
+  initialJson?: Record<string, unknown>;
+  onConnected?: (document: MeshDocument) => void;
+  onError?: (error: unknown) => void;
 }
 
 export interface UseDocumentConnectionResult {
-    document: MeshDocument | null;
-    error: unknown;
-    loading: boolean;
-    schemaFileExists: boolean;
+  document: MeshDocument | null;
+  error: unknown;
+  loading: boolean;
+  schemaFileExists: boolean;
+}
+
+function getRetryDelayMs(retryCount: number): number {
+  return Math.min(60_000, 500 * 2 ** retryCount);
+}
+
+async function closeDocument(room: RoomClient, path: string): Promise<void> {
+  try {
+    await room.sync.close(path);
+  } catch {
+  }
 }
 
 /**
  * Connects to a Mesh document inside an existing RoomClient and keeps it in sync.
- *
- * The function retries with an exponential back‑off (capped at 60 s) until the
- * document becomes available or the component unmounts.
- *
- * @param room  An already‑connected RoomClient.
- * @param path  Path to the document inside the room.
  */
-export function useDocumentConnection({ room, path, onConnected, onError }: UseDocumentConnectionProps): UseDocumentConnectionResult {
-    const [schemaFileExists, setSchemaFileExists] = useState<boolean | null>(null);
-    const [document, setDocument] = useState<MeshDocument | null>(null);
-    const [error, setError] = useState<unknown>(null);
+export function useDocumentConnection({
+  room,
+  path,
+  schema,
+  initialJson,
+  onConnected,
+  onError,
+}: UseDocumentConnectionProps): UseDocumentConnectionResult {
+  const [schemaFileExists, setSchemaFileExists] = useState<boolean>(schema != null);
+  const [document, setDocument] = useState<MeshDocument | null>(null);
+  const [error, setError] = useState<unknown>(null);
 
-    const openedRef = useRef(false);
-    const retryCountRef = useRef(0);
-    const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onConnectedRef = useRef(onConnected);
+  const onErrorRef = useRef(onError);
 
-    const pathExtension = path.split('.').pop()?.toLowerCase();
-    const schemaFile = `.schemas/${pathExtension}.json`;
+  useEffect(() => {
+    onConnectedRef.current = onConnected;
+  }, [onConnected]);
 
-    useEffect(() => {
-        let cancelled = false;
+  useEffect(() => {
+    onErrorRef.current = onError;
+  }, [onError]);
 
-        const openDocument = async () => {
-            try {
-                const schemaExists = await room.storage.exists(schemaFile);
-                if (schemaExists) {
-                    setSchemaFileExists(true);
-                } else {
-                    setSchemaFileExists(false);
-                    return;
-                }
+  useEffect(() => {
+    let cancelled = false;
+    let retryTimeout: ReturnType<typeof setTimeout> | null = null;
+    let opened = false;
+    let nextRetryCount = 0;
 
-                const doc = await room.sync.open(path);
-
-                if (cancelled) return;
-                openedRef.current = true;
-
-                // sleep for 100 ms to ensure the document is ready
-                await new Promise(resolve => setTimeout(resolve, 100));
-
-                setDocument(doc);
-                setError(null);
-
-                if (onConnected) {
-                    onConnected(doc);
-                }
-            } catch (err) {
-                console.error('Failed to open document:', err);
-
-                if (cancelled) return;
-
-                setError(err);
-                if (onError) {
-                    onError(err);
-                }
-
-                // Exponential back‑off: 500 ms, 1 s, 2 s, … up to 60 s.
-                const delay = Math.min(60_000, 500 * 2 ** retryCountRef.current);
-                retryCountRef.current += 1;
-
-                timeoutRef.current = setTimeout(openDocument, delay);
-            }
-        };
-
-        openDocument();
-
-        return () => {
-            cancelled = true;
-
-            if (timeoutRef.current !== null) {
-                clearTimeout(timeoutRef.current);
-                timeoutRef.current = null;
-            }
-
-            if (openedRef.current) {
-                room.sync.close(path);
-            }
-
-            setDocument(null);
-            retryCountRef.current = 0;
-            openedRef.current = false;
-        };
-    }, [path]);
-
-    return {
-        document,
-        error,
-        loading: document === null && error == null,
-        schemaFileExists: schemaFileExists !== null ? schemaFileExists : true,
+    const clearRetryTimeout = () => {
+      if (retryTimeout != null) {
+        clearTimeout(retryTimeout);
+        retryTimeout = null;
+      }
     };
-}
 
-type onChangedHandler = (document: MeshDocument) => void;
+    const waitForRetry = (delayMs: number): Promise<void> => new Promise((resolve) => {
+      retryTimeout = setTimeout(() => {
+        retryTimeout = null;
+        resolve();
+      }, delayMs);
+    });
 
-export function useDocumentChanged({document, onChanged}: {
-    document: MeshDocument | null;
-    onChanged: onChangedHandler;
-}): void {
-    useEffect(() => {
-        if (document) {
-            const s = document.listen(() => onChanged(document));
+    setDocument(null);
+    setError(null);
+    setSchemaFileExists(schema != null);
 
-            onChanged(document);
+    void (async () => {
+      while (!cancelled) {
+        try {
+          if (schema == null) {
+            const pathExtension = path.split('.').pop()?.toLowerCase();
+            const schemaFile = `.schemas/${pathExtension}.json`;
+            const nextSchemaExists = await room.storage.exists(schemaFile);
 
-            return () => s.unsubscribe();
-        }
-    }, [document]);
-}
+            if (cancelled) {
+              return;
+            }
 
-export function useRoomParticipants(room: RoomClient | null): Iterable<RemoteParticipant> {
-    const [participants, setParticipants] = useState<Iterable<RemoteParticipant>>(() => []);
+            setSchemaFileExists(nextSchemaExists);
 
-    useEffect(() => {
-        if (!room || !room.messaging) {
+            if (!nextSchemaExists) {
+              return;
+            }
+          }
+
+          const nextDocument = await room.sync.open(path, { initialJson, schema });
+
+          if (cancelled) {
+            await closeDocument(room, path);
             return;
+          }
+
+          opened = true;
+          nextRetryCount = 0;
+          setDocument(nextDocument);
+          setError(null);
+          onConnectedRef.current?.(nextDocument);
+          return;
+        } catch (nextError) {
+          if (cancelled) {
+            return;
+          }
+
+          setDocument(null);
+          setError(nextError);
+          onErrorRef.current?.(nextError);
+
+          await waitForRetry(getRetryDelayMs(nextRetryCount));
+          nextRetryCount += 1;
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      clearRetryTimeout();
+
+      if (opened) {
+        void closeDocument(room, path);
+      }
+    };
+  }, [initialJson, path, room, schema]);
+
+  return {
+    document,
+    error,
+    loading: document == null && error == null,
+    schemaFileExists,
+  };
+}
+
+type OnChangedHandler = (document: MeshDocument) => void;
+
+export function useDocumentChanged({
+  document,
+  onChanged,
+}: {
+  document: MeshDocument | null;
+  onChanged: OnChangedHandler;
+}): void {
+  useEffect(() => {
+    if (document == null) {
+      return;
+    }
+
+    const subscription = document.listen(() => onChanged(document));
+    onChanged(document);
+
+    return () => subscription.unsubscribe();
+  }, [document, onChanged]);
+}
+
+function sameParticipantsById(
+  currentParticipants: readonly RemoteParticipant[],
+  nextParticipants: readonly RemoteParticipant[],
+): boolean {
+  if (currentParticipants.length !== nextParticipants.length) {
+    return false;
+  }
+
+  for (let index = 0; index < currentParticipants.length; index += 1) {
+    if (currentParticipants[index]?.id !== nextParticipants[index]?.id) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+export function useRoomParticipants(room: RoomClient | null): RemoteParticipant[] {
+  const [participants, setParticipants] = useState<RemoteParticipant[]>([]);
+
+  useEffect(() => {
+    if (room == null) {
+      setParticipants([]);
+      return;
+    }
+
+    const updateParticipants = () => {
+      const nextParticipants = room.messaging.remoteParticipants;
+      setParticipants((currentParticipants) => {
+        if (sameParticipantsById(currentParticipants, nextParticipants)) {
+          return currentParticipants;
         }
 
-        const updateParticipants = () => setParticipants(room.messaging.remoteParticipants);
+        return [...nextParticipants];
+      });
+    };
 
-        room.messaging.on('participant_added', updateParticipants);
-        room.messaging.on('participant_removed', updateParticipants);
-        room.messaging.on('messaging_enabled', updateParticipants);
+    room.messaging.on('participant_added', updateParticipants);
+    room.messaging.on('participant_removed', updateParticipants);
+    room.messaging.on('messaging_enabled', updateParticipants);
 
-        updateParticipants();
+    updateParticipants();
 
-        return () => {
-            room.messaging.off('participant_added', updateParticipants);
-            room.messaging.off('participant_removed', updateParticipants);
-            room.messaging.on('messaging_enabled', updateParticipants);
-        };
-    }, [room]);
+    return () => {
+      room.messaging.off('participant_added', updateParticipants);
+      room.messaging.off('participant_removed', updateParticipants);
+      room.messaging.off('messaging_enabled', updateParticipants);
+    };
+  }, [room]);
 
-    return participants;
+  return participants;
 }

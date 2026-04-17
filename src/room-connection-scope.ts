@@ -1,16 +1,29 @@
-import { useEffect, useState, useRef } from 'react';
-import { subscribe } from './subscribe-async-gen';
-import { RoomEvent, RoomMessageEvent } from '@meshagent/meshagent';
+import { useEffect, useRef, useState } from 'react';
 
 import {
-    ParticipantToken,
-    RoomClient,
-    WebSocketClientProtocol,
+  type OAuthTokenRequest,
+  ParticipantToken,
+  RoomClient,
+  RoomEvent,
+  RoomMessageEvent,
+  RoomServerException,
+  type SecretRequest,
+  WebSocketClientProtocol,
 } from '@meshagent/meshagent';
 
-export interface RoomConnectionInfo {
-  url: string;     // You can switch to `URL` if preferred
-  jwt: string;
+import type { RoomConnectionInfo } from '@meshagent/meshagent';
+
+import { subscribe } from './subscribe-async-gen';
+
+const retryBaseDelayMs = 500;
+const retryMaxDelayMs = 30000;
+
+function getRetryDelayMs(retryCount: number): number {
+  return Math.min(retryMaxDelayMs, retryBaseDelayMs * 2 ** retryCount);
+}
+
+function isRetryableConnectionError(error: unknown): error is RoomServerException {
+  return error instanceof RoomServerException && error.retryable;
 }
 
 /* -------------------------------------------------
@@ -31,7 +44,7 @@ export const developmentAuthorization = ({
   roomName: string;
   secret: string;
 }): (() => Promise<RoomConnectionInfo>) => async () => {
-  const token: ParticipantToken = new ParticipantToken({
+  const token = new ParticipantToken({
     name: participantName,
     projectId,
     apiKeyId,
@@ -42,105 +55,238 @@ export const developmentAuthorization = ({
 
   const jwt = await token.toJwt({ token: secret });
 
-  return {url, jwt};
+  return {
+    jwt,
+    projectId,
+    roomName,
+    roomUrl: url,
+  };
 };
 
-export interface UseRoomConnectionOptions {
-  /** Async function that returns `{ url, jwt }` for the room. */
-  authorization: () => Promise<{ url: string; jwt: string }>;
+export const staticAuthorization = ({
+  projectId,
+  roomName,
+  url,
+  jwt,
+}: {
+  projectId: string;
+  roomName: string;
+  url: string;
+  jwt: string;
+}): (() => Promise<RoomConnectionInfo>) => async () => ({
+  jwt,
+  projectId,
+  roomName,
+  roomUrl: url,
+});
 
-  /** Enable the optional messaging layer (default = `true`). */
+export interface UseRoomConnectionOptions {
+  reconnectKey?: string;
+  authorization: () => Promise<RoomConnectionInfo>;
   enableMessaging?: boolean;
+  onReady?: (room: RoomClient) => void;
+  oauthTokenRequestHandler?: (room: RoomClient, request: OAuthTokenRequest) => Promise<void> | void;
+  secretRequestHandler?: (room: RoomClient, request: SecretRequest) => Promise<void> | void;
+  roomClientFactory?: (connectionInfo: RoomConnectionInfo) => RoomClient;
 }
 
-/**
- * Shape of the object returned by the hook.
- */
 export interface UseRoomConnectionResult {
   client: RoomClient | null;
-
-  state: 'authorizing' | 'connecting' | 'ready' | 'done';
-
+  state: 'authorizing' | 'connecting' | 'retrying' | 'ready' | 'done';
   ready: boolean;
   done: boolean;
   error: unknown;
-
   dispose: () => void;
 }
 
-export function useRoomConnection(props: UseRoomConnectionOptions): UseRoomConnectionResult {
-  const { authorization, enableMessaging = true } = props;
-
+export function useRoomConnection({
+  reconnectKey,
+  authorization,
+  enableMessaging = true,
+  onReady,
+  oauthTokenRequestHandler,
+  secretRequestHandler,
+  roomClientFactory,
+}: UseRoomConnectionOptions): UseRoomConnectionResult {
   const [client, setClient] = useState<RoomClient | null>(null);
   const [ready, setReady] = useState(false);
-  const [state, setState] = useState<'authorizing' | 'connecting' | 'ready' | 'done'>('authorizing');
+  const [state, setState] = useState<UseRoomConnectionResult['state']>('authorizing');
   const [error, setError] = useState<unknown>(null);
 
-  // Keep the latest client in a ref so we can call `dispose` in cleanup.
   const clientRef = useRef<RoomClient | null>(null);
-
-  clientRef.current = client;
-
-  // Instance method exposed to consumers (rarely needed).
-  const dispose = () => {
-    clientRef.current?.dispose();
-
-    setState('done');
-  };
+  const cancelConnectionRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     let cancelled = false;
+    let retryTimeout: ReturnType<typeof setTimeout> | null = null;
 
-    const connect = async () => {
-      try {
-        // 1️⃣  Get connection credentials
-        const { url, jwt } = await authorization();
-
-        if (cancelled) return;
-
-        const room = new RoomClient({
-          protocolFactory: WebSocketClientProtocol.createFactory({ url, token: jwt }),
-        });
-
-        setClient(room);
-        setState('connecting');
-        
-        await room.start({
-          onDone: () => {
-            if (cancelled) return;
-            setState('done');
-          },
-          onError: (e: unknown) => {
-            if (cancelled) return;
-            setError(e);
-            setState('done');
-          },
-        });
-
-        if (enableMessaging) {
-          room.messaging.enable();
-        }
-
-        if (cancelled) return;
-        setState('ready');
-        setReady(true);
-
-      } catch (e) {
-        if (cancelled) return;
-        setError(e);
-        setState('done');
+    const clearRetryTimeout = () => {
+      if (retryTimeout != null) {
+        clearTimeout(retryTimeout);
+        retryTimeout = null;
       }
     };
 
-    connect();
+    const disposeClient = (room: RoomClient | null) => {
+      if (room == null) {
+        return;
+      }
+
+      if (clientRef.current === room) {
+        clientRef.current = null;
+      }
+
+      room.dispose();
+    };
+
+    const waitForRetry = (delayMs: number): Promise<void> => new Promise((resolve) => {
+      retryTimeout = setTimeout(() => {
+        retryTimeout = null;
+        resolve();
+      }, delayMs);
+    });
+
+    setClient(null);
+    setReady(false);
+
+    const cancelConnection = ({ updateState }: { updateState: boolean }) => {
+      if (cancelled) {
+        return;
+      }
+
+      cancelled = true;
+      clearRetryTimeout();
+      const currentClient = clientRef.current;
+      clientRef.current = null;
+      disposeClient(currentClient);
+
+      if (updateState) {
+        setClient(null);
+        setReady(false);
+      }
+    };
+
+    cancelConnectionRef.current = () => cancelConnection({ updateState: true });
+
+    void (async () => {
+      let retryCount = 0;
+
+      while (!cancelled) {
+        let connectionInfo: RoomConnectionInfo;
+
+        try {
+          setState('authorizing');
+          setError(null);
+          connectionInfo = await authorization();
+        } catch (nextError) {
+          if (cancelled) {
+            return;
+          }
+
+          setError(nextError);
+          setState('done');
+          setReady(false);
+          return;
+        }
+
+        if (cancelled) {
+          return;
+        }
+
+        let nextClient: RoomClient;
+
+        if (roomClientFactory != null) {
+          nextClient = roomClientFactory(connectionInfo);
+        } else {
+          nextClient = new RoomClient({
+            protocolFactory: WebSocketClientProtocol.createFactory({
+              url: connectionInfo.roomUrl,
+              token: connectionInfo.jwt,
+            }),
+            oauthTokenRequestHandler: oauthTokenRequestHandler == null
+              ? undefined
+              : (request) => oauthTokenRequestHandler(nextClient, request),
+            secretRequestHandler: secretRequestHandler == null
+              ? undefined
+              : (request) => secretRequestHandler(nextClient, request),
+          });
+        }
+
+        clientRef.current = nextClient;
+        setClient(nextClient);
+        setReady(false);
+        setState('connecting');
+
+        try {
+          await nextClient.start({
+            onDone: () => {
+              if (cancelled || clientRef.current !== nextClient) {
+                return;
+              }
+
+              setReady(false);
+              setState('done');
+            },
+            onError: (nextError: unknown) => {
+              if (cancelled || clientRef.current !== nextClient) {
+                return;
+              }
+
+              setError(nextError);
+              setReady(false);
+              setState('done');
+            },
+          });
+
+          if (enableMessaging) {
+            nextClient.messaging.enable();
+          }
+
+          if (cancelled || clientRef.current !== nextClient) {
+            disposeClient(nextClient);
+            return;
+          }
+
+          retryCount = 0;
+          setError(null);
+          setReady(true);
+          setState('ready');
+          onReady?.(nextClient);
+
+          return;
+        } catch (nextError) {
+          disposeClient(nextClient);
+
+          if (cancelled) {
+            return;
+          }
+
+          setClient((currentClient) => currentClient === nextClient ? null : currentClient);
+          setReady(false);
+          setError(nextError);
+
+          if (!isRetryableConnectionError(nextError)) {
+            setState('done');
+            return;
+          }
+
+          setState('retrying');
+          await waitForRetry(getRetryDelayMs(retryCount));
+          retryCount += 1;
+        }
+      }
+    })();
 
     return () => {
-      // React unmount or deps change → cancel & dispose
-      cancelled = true;
-      dispose();
+      cancelConnection({ updateState: false });
+      cancelConnectionRef.current = () => {};
     };
-    // eslint‑disable‑next‑line react-hooks/exhaustive-deps
-  }, []); // run once, just like componentDidMount
+  }, [reconnectKey, enableMessaging, roomClientFactory]);
+
+  const dispose = () => {
+    cancelConnectionRef.current();
+    setState('done');
+  };
 
   return {
     client,
@@ -153,75 +299,91 @@ export function useRoomConnection(props: UseRoomConnectionOptions): UseRoomConne
 }
 
 export interface UseRoomIndicatorsResult {
-    typing: boolean;
-    thinking: boolean;
+  typing: boolean;
+  thinking: boolean;
 }
 
 export interface UseRoomIndicatorsProps {
-    room: RoomClient | null;
-    path: string;
+  room: RoomClient | null;
+  path: string;
 }
 
-export function useRoomIndicators({room, path}: UseRoomIndicatorsProps): UseRoomIndicatorsResult {
-    const typingMap = useRef<Record<string, NodeJS.Timeout>>({});
-    const thinkingMap = useRef<Record<string, NodeJS.Timeout>>({});
+export function useRoomIndicators({ room, path }: UseRoomIndicatorsProps): UseRoomIndicatorsResult {
+  const typingMap = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const thinkingMap = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
-    const [typing, setTyping] = useState(false);
-    const [thinking, setThinking] = useState(false);
+  const [typing, setTyping] = useState(false);
+  const [thinking, setThinking] = useState(false);
 
-    useEffect(() => {
-        if (!room) return;
+  useEffect(() => {
+    if (!room) {
+      return;
+    }
 
-        const s = subscribe(room.listen(), {
-            next: (event: RoomEvent) => {
-                if (event instanceof RoomMessageEvent) {
-                    const { message } = event;
+    setTyping(false);
+    setThinking(false);
 
-                    // Ignore messages from ourselves
-                    if (message.fromParticipantId === room.localParticipant?.id) {
-                        return;
-                    }
+    const subscription = subscribe(room.listen(), {
+      next: (event: RoomEvent) => {
+        if (!(event instanceof RoomMessageEvent)) {
+          return;
+        }
 
-                    // Ignore messages not for this path
-                    if (message.message.path !== path) {
-                        return;
-                    }
+        const { message } = event;
 
-                    if (message.type === "typing") {
-                        // Clear any existing timer for this participant
-                        clearTimeout(typingMap.current[message.fromParticipantId]);
+        if (message.fromParticipantId === room.localParticipant?.id) {
+          return;
+        }
 
-                        // Set a new timer to remove typing after 1 second
-                        typingMap.current[message.fromParticipantId] = setTimeout(() => {
-                            delete typingMap.current[message.fromParticipantId];
+        if (message.message.path !== path) {
+          return;
+        }
 
-                            setTyping(Object.keys(typingMap.current).length > 0);
-                        }, 1000);
+        if (message.type === 'typing') {
+          clearTimeout(typingMap.current[message.fromParticipantId]);
 
-                        // Update typing state
-                        setTyping(Object.keys(typingMap.current).length > 0);
+          typingMap.current[message.fromParticipantId] = setTimeout(() => {
+            delete typingMap.current[message.fromParticipantId];
+            setTyping(Object.keys(typingMap.current).length > 0);
+          }, 1000);
 
-                    } else if (message.type === "thinking") {
-                        clearTimeout(thinkingMap.current[message.fromParticipantId]);
+          setTyping(Object.keys(typingMap.current).length > 0);
+          return;
+        }
 
-                        if (message.message.thinking) {
-                            thinkingMap.current[message.fromParticipantId] = setTimeout(() => {
-                                delete thinkingMap.current[message.fromParticipantId];
+        if (message.type !== 'thinking') {
+          return;
+        }
 
-                                setThinking(Object.keys(thinkingMap.current).length > 0);
-                            }, 5000);
-                        } else {
-                            delete thinkingMap.current[message.fromParticipantId];
-                        }
+        clearTimeout(thinkingMap.current[message.fromParticipantId]);
 
-                        setThinking(Object.keys(thinkingMap.current).length > 0);
-                    }
-                }
-            },
-        });
+        if (message.message.thinking) {
+          thinkingMap.current[message.fromParticipantId] = setTimeout(() => {
+            delete thinkingMap.current[message.fromParticipantId];
+            setThinking(Object.keys(thinkingMap.current).length > 0);
+          }, 5000);
+        } else {
+          delete thinkingMap.current[message.fromParticipantId];
+        }
 
-        return () => s.unsubscribe();
-    }, [room, path]);
+        setThinking(Object.keys(thinkingMap.current).length > 0);
+      },
+    });
 
-    return { typing, thinking };
+    return () => {
+      subscription.unsubscribe();
+
+      for (const timeout of Object.values(typingMap.current)) {
+        clearTimeout(timeout);
+      }
+      for (const timeout of Object.values(thinkingMap.current)) {
+        clearTimeout(timeout);
+      }
+
+      typingMap.current = {};
+      thinkingMap.current = {};
+    };
+  }, [path, room]);
+
+  return { typing, thinking };
 }
