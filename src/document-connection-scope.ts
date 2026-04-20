@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { MeshDocument, MeshSchema, RoomClient, RemoteParticipant } from '@meshagent/meshagent';
+import { MeshDocument, MeshSchema, RoomClient } from '@meshagent/meshagent';
 
 export interface UseDocumentConnectionProps {
   room: RoomClient;
@@ -162,57 +162,4 @@ export function useDocumentChanged({
 
     return () => subscription.unsubscribe();
   }, [document, onChanged]);
-}
-
-function sameParticipantsById(
-  currentParticipants: readonly RemoteParticipant[],
-  nextParticipants: readonly RemoteParticipant[],
-): boolean {
-  if (currentParticipants.length !== nextParticipants.length) {
-    return false;
-  }
-
-  for (let index = 0; index < currentParticipants.length; index += 1) {
-    if (currentParticipants[index]?.id !== nextParticipants[index]?.id) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-export function useRoomParticipants(room: RoomClient | null): RemoteParticipant[] {
-  const [participants, setParticipants] = useState<RemoteParticipant[]>([]);
-
-  useEffect(() => {
-    if (room == null) {
-      setParticipants([]);
-      return;
-    }
-
-    const updateParticipants = () => {
-      const nextParticipants = room.messaging.remoteParticipants;
-      setParticipants((currentParticipants) => {
-        if (sameParticipantsById(currentParticipants, nextParticipants)) {
-          return currentParticipants;
-        }
-
-        return [...nextParticipants];
-      });
-    };
-
-    room.messaging.on('participant_added', updateParticipants);
-    room.messaging.on('participant_removed', updateParticipants);
-    room.messaging.on('messaging_enabled', updateParticipants);
-
-    updateParticipants();
-
-    return () => {
-      room.messaging.off('participant_added', updateParticipants);
-      room.messaging.off('participant_removed', updateParticipants);
-      room.messaging.off('messaging_enabled', updateParticipants);
-    };
-  }, [room]);
-
-  return participants;
 }
