@@ -152,14 +152,20 @@ export function useDocumentChanged({
   document: MeshDocument | null;
   onChanged: OnChangedHandler;
 }): void {
+  const onChangedRef = useRef(onChanged);
+
+  useEffect(() => {
+    onChangedRef.current = onChanged;
+  }, [onChanged]);
+
   useEffect(() => {
     if (document == null) {
       return;
     }
 
-    const subscription = document.listen(() => onChanged(document));
-    onChanged(document);
+    const subscription = document.listen(() => onChangedRef.current(document));
+    onChangedRef.current(document);
 
     return () => subscription.unsubscribe();
-  }, [document, onChanged]);
+  }, [document]);
 }
