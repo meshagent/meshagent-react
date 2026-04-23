@@ -39,7 +39,7 @@
         "@meshagent/meshagent": "^0.38.4",
         "react-dom": "^19.1.0",
         "typescript": "^5.8.3",
-        "uuid": "^11.1.0",
+        "uuid": "^14.0.0",
         "yjs": "^13.6.7"
     },
     "overrides": {
