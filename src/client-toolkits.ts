@@ -31,7 +31,6 @@ function getToolkitDefinition(toolkit: Toolkit, isPublic: boolean): string {
 		name: toolkit.name,
 		title: toolkit.title,
 		description: toolkit.description,
-		thumbnailUrl: toolkit.thumbnailUrl ?? null,
 		rules: [...toolkit.rules],
 		tools: toolkit.tools.map((tool) => ({
 			name: tool.name,
@@ -39,7 +38,6 @@ function getToolkitDefinition(toolkit: Toolkit, isPublic: boolean): string {
 			description: tool.description,
 			inputSpec: tool.inputSpec?.toJson() ?? null,
 			outputSpec: tool.outputSpec?.toJson() ?? null,
-			thumbnailUrl: tool.thumbnailUrl ?? null,
 		})),
 	});
 }
