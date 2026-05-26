@@ -25,3 +25,5 @@ do
 
     tsc -p tsconfig.${target}.json
 done
+
+echo '{"type":"commonjs"}' > "$DIST_DIR/cjs/package.json"

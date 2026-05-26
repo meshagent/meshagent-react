@@ -13,7 +13,7 @@ import {
 
 import type { RoomConnectionInfo } from '@meshagent/meshagent';
 
-import { subscribe } from './subscribe-async-gen';
+import { subscribe } from './subscribe-async-gen.js';
 
 const retryBaseDelayMs = 500;
 const retryMaxDelayMs = 30000;
