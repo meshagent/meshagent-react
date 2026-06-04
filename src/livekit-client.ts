@@ -26,7 +26,7 @@ export class LivekitClient {
   }: {
     breakoutRoom?: string;
   } = {}): Promise<LivekitConnectionInfo> {
-    const response = await this.room.invoke({
+    const response = await this.room.invokeContent({
       toolkit: 'livekit',
       tool: 'connect',
       input: { breakout_room: breakoutRoom ?? null },
