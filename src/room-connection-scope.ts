@@ -1,13 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 
 import {
-  type OAuthTokenRequest,
   ParticipantToken,
   RoomClient,
   RoomEvent,
   RoomMessageEvent,
   RoomServerException,
-  type SecretRequest,
   WebSocketClientProtocol,
 } from '@meshagent/meshagent';
 
@@ -85,8 +83,6 @@ export interface UseRoomConnectionOptions {
   authorization: () => Promise<RoomConnectionInfo>;
   enableMessaging?: boolean;
   onReady?: (room: RoomClient) => void;
-  oauthTokenRequestHandler?: (room: RoomClient, request: OAuthTokenRequest) => Promise<void> | void;
-  secretRequestHandler?: (room: RoomClient, request: SecretRequest) => Promise<void> | void;
   roomClientFactory?: (connectionInfo: RoomConnectionInfo) => RoomClient;
 }
 
@@ -104,8 +100,6 @@ export function useRoomConnection({
   authorization,
   enableMessaging = true,
   onReady,
-  oauthTokenRequestHandler,
-  secretRequestHandler,
   roomClientFactory,
 }: UseRoomConnectionOptions): UseRoomConnectionResult {
   const [client, setClient] = useState<RoomClient | null>(null);
@@ -203,12 +197,6 @@ export function useRoomConnection({
               url: connectionInfo.roomUrl,
               token: connectionInfo.jwt,
             }),
-            oauthTokenRequestHandler: oauthTokenRequestHandler == null
-              ? undefined
-              : (request) => oauthTokenRequestHandler(nextClient, request),
-            secretRequestHandler: secretRequestHandler == null
-              ? undefined
-              : (request) => secretRequestHandler(nextClient, request),
           });
         }
 
