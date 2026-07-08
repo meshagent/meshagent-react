@@ -39,7 +39,8 @@ export class LivekitProtocolChannel implements ProtocolChannel {
   }
 
   public async sendData(data: Uint8Array): Promise<void> {
-    await this.room.localParticipant.publishData(data, {
+    const payload = new Uint8Array(data);
+    await this.room.localParticipant.publishData(payload, {
       reliable: true,
       topic: this.topic,
       destinationIdentities: [this.remote.identity],
