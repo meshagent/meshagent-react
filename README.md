@@ -13,8 +13,6 @@ The package is the React counterpart to the Flutter utility widgets in `meshagen
 - `useRoomParticipants(...)`: track the current remote participants for a room
 - `useClientToolkits(...)`: host client-side toolkits for the lifetime of a component
 - `useRoomIndicators(...)`: listen for typing and thinking indicators on a chat path
-- `LivekitClient` / `room.livekit`: fetch LiveKit connection info from the room toolkit
-- `LivekitProtocolChannel`: bridge MeshAgent protocol traffic over LiveKit data messages
 
 ## Example
 
