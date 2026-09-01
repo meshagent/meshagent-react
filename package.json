@@ -1,10 +1,6 @@
 {
     "name": "@meshagent/meshagent-react",
-<<<<<<< HEAD
-    "version": "0.51.6",
-=======
     "version": "0.52.0",
->>>>>>> origin/main
     "description": "Meshagent React Client",
     "homepage": "https://github.com/meshagent/meshagent-react",
     "scripts": {
@@ -37,11 +33,7 @@
         "@types/react-dom": "^19.1.6"
     },
     "dependencies": {
-<<<<<<< HEAD
-        "@meshagent/meshagent": "^0.51.6",
-=======
         "@meshagent/meshagent": "^0.52.0",
->>>>>>> origin/main
         "base-64": "^1.0.0",
         "react": "^19.1.0",
         "react-dom": "^19.1.0",
